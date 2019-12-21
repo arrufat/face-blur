@@ -30,3 +30,11 @@
 *.exe
 *.out
 *.app
+
+# Images
+*.png
+*.jpg
+
+# Build system files
+/build
+/compile_commands.json
