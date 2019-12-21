@@ -47,8 +47,10 @@ FetchContent_MakeAvailable(dlib)
 include_directories(./src)
 
 # Build the main target
+add_library(detector STATIC src/detector_model.cpp)
+target_link_libraries(detector PRIVATE dlib::dlib)
 add_executable(faceblur src/faceblur.cpp)
-target_link_libraries(faceblur dlib::dlib OpenMP::OpenMP_CXX)
+target_link_libraries(faceblur dlib::dlib OpenMP::OpenMP_CXX detector)
 target_compile_options(faceblur PRIVATE -Wall -Wextra -pedantic -Wno-deprecated-copy)
 install(TARGETS faceblur DESTINATION bin)
 

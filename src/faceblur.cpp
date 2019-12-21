@@ -6,21 +6,11 @@
 #include <dlib/gui_widgets.h>
 #include <dlib/image_io.h>
 #include <dlib/image_processing.h>
+#include <dlib/image_processing/frontal_face_detector.h>
 
-std::string detector_path = "models/mmod_human_face_detector.dat";
+#include "detector_model.h"
+
 const std::string img_ext = ".jpg .jpeg .png .gif .JPG .JPEG .PNG .GIF";
-
-namespace model
-{
-    using namespace dlib;
-    template <long num_filters, typename SUBNET> using con5d = con<num_filters,5,5,2,2,SUBNET>;
-    template <long num_filters, typename SUBNET> using con5  = con<num_filters,5,5,1,1,SUBNET>;
-
-    template <typename SUBNET> using downsampler  = relu<affine<con5d<32, relu<affine<con5d<32, relu<affine<con5d<16,SUBNET>>>>>>>>>;
-    template <typename SUBNET> using rcon5  = relu<affine<con5<45,SUBNET>>>;
-
-    using test = loss_mmod<con<1,9,9,1,1,rcon5<rcon5<rcon5<downsampler<input_rgb_image_pyramid<pyramid_down<6>>>>>>>>;
-}
 
 void paste(
     dlib::matrix<dlib::rgb_pixel>& img,
@@ -44,7 +34,7 @@ void paste(
 int main(int argc, char** argv) try
 {
     dlib::command_line_parser parser;
-    parser.add_option("dnn", "path to the detector model (default: " + detector_path + ")", 1);
+    parser.add_option("fast", "use a faster, less accurate face detector");
     parser.add_option("sigma", "size of the gaussian blur kernel (default: 3)", 1);
     parser.set_group_name("Help Options");
     parser.add_option("h", "alias for --help");
@@ -59,7 +49,11 @@ int main(int argc, char** argv) try
         return EXIT_SUCCESS;
     }
 
-    detector_path = dlib::get_option(parser, "dnn", detector_path);
+    face_detector::infer dnn_detector;
+    std::istringstream sin(get_serialized_mmod_face_detector());
+    deserialize(dnn_detector, sin);
+    auto hog_detector = dlib::get_frontal_face_detector();
+
     const double sigma = get_option(parser, "sigma", 3);
 
     std::vector<dlib::file> files;
@@ -85,8 +79,7 @@ int main(int argc, char** argv) try
         return EXIT_SUCCESS;
     }
 
-    model::test net;
-    dlib::deserialize(detector_path) >> net;
+
     std::cout << "processing " << files.size() << " images" << std::endl;
 
     dlib::image_window win;
@@ -96,30 +89,42 @@ int main(int argc, char** argv) try
     {
         dlib::load_image(img, file.full_name());
         win.set_image(img);
-        auto dets = net(img);
+        std::vector<dlib::rectangle> dets;
+        if (parser.option("fast"))
+        {
+            dets = hog_detector(img);
+        }
+        else
+        {
+            for (const auto& det : dnn_detector(img))
+            {
+                dets.push_back(det.rect);
+            }
+        }
         for (auto&& det : dets)
         {
 
-            // dlib::extract_image_chip(img, det.rect, face_chip);
-            // face_blur.set_size(face_chip.nr() / 8, face_chip.nc() / 8);
-            // dlib::resize_image(face_chip, face_blur, dlib::interpolate_nearest_neighbor());
-            // face_final.set_size(face_chip.nr(), face_chip.nc());
-            // dlib::resize_image(face_blur, face_final, dlib::interpolate_nearest_neighbor());
+            dlib::extract_image_chip(img, det, face_chip);
+            face_blur.set_size(face_chip.nr() / 8, face_chip.nc() / 8);
+            dlib::resize_image(face_chip, face_blur, dlib::interpolate_nearest_neighbor());
+            face_final.set_size(face_chip.nr(), face_chip.nc());
+            dlib::resize_image(face_blur, face_final, dlib::interpolate_nearest_neighbor());
 
-            // extract a big area around the detector to prevent border effects when blurring
-            const auto p = 2;
-            const auto box = dlib::centered_rect(det.rect, det.rect.width() * p, det.rect.height() * p);
-            dlib::extract_image_chip(img, box, face_chip);
-            dlib::extract_image_chip(img, box, face_chip);
-            dlib::gaussian_blur(face_chip, face_blur, sigma);
-            // get the blurred face inside the blurred chip
-            const auto final_box = dlib::centered_rect(
-                face_blur.nc() / 2,
-                face_blur.nr() / 2,
-                det.rect.width(),
-                det.rect.height());
-            dlib::extract_image_chip(face_blur, final_box, face_final);
-            paste(img, det.rect, face_final);
+            // // extract a big area around the detector to prevent border effects when blurring
+            // const auto p = 2;
+            // const auto box = dlib::centered_rect(det.rect, det.rect.width() * p, det.rect.height() * p);
+            // dlib::extract_image_chip(img, box, face_chip);
+            // dlib::extract_image_chip(img, box, face_chip);
+            // dlib::gaussian_blur(face_chip, face_blur, sigma);
+            // // get the blurred face inside the blurred chip
+            // const auto final_box = dlib::centered_rect(
+            //     face_blur.nc() / 2,
+            //     face_blur.nr() / 2,
+            //     det.rect.width(),
+            //     det.rect.height());
+            // dlib::extract_image_chip(face_blur, final_box, face_final);
+
+            paste(img, det, face_final);
         }
         win.clear_overlay();
         win.set_image(img);
