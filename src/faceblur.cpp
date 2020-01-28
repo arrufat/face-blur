@@ -35,7 +35,7 @@ int main(int argc, char** argv) try
 {
     dlib::command_line_parser parser;
     parser.add_option("fast", "use a faster, less accurate face detector");
-    parser.add_option("sigma", "size of the gaussian blur kernel (default: 3)", 1);
+    parser.add_option("sigma", "size of the gaussian blur kernel (default: 5)", 1);
     parser.set_group_name("Help Options");
     parser.add_option("h", "alias for --help");
     parser.add_option("help", "display this message and exit");
@@ -54,7 +54,7 @@ int main(int argc, char** argv) try
     deserialize(dnn_detector, sin);
     auto hog_detector = dlib::get_frontal_face_detector();
 
-    const double sigma = get_option(parser, "sigma", 3);
+    const double sigma = get_option(parser, "sigma", 5);
 
     std::vector<dlib::file> files;
     for (size_t i = 0; i < parser.number_of_arguments(); ++i)
@@ -104,32 +104,34 @@ int main(int argc, char** argv) try
         for (auto&& det : dets)
         {
 
-            dlib::extract_image_chip(img, det, face_chip);
-            face_blur.set_size(face_chip.nr() / 8, face_chip.nc() / 8);
-            dlib::resize_image(face_chip, face_blur, dlib::interpolate_nearest_neighbor());
-            face_final.set_size(face_chip.nr(), face_chip.nc());
-            dlib::resize_image(face_blur, face_final, dlib::interpolate_nearest_neighbor());
-
-            // // extract a big area around the detector to prevent border effects when blurring
             // const auto p = 2;
-            // const auto box = dlib::centered_rect(det.rect, det.rect.width() * p, det.rect.height() * p);
+            // const auto box = dlib::centered_rect(det, det.width() * p, det.height() * p);
             // dlib::extract_image_chip(img, box, face_chip);
-            // dlib::extract_image_chip(img, box, face_chip);
-            // dlib::gaussian_blur(face_chip, face_blur, sigma);
-            // // get the blurred face inside the blurred chip
-            // const auto final_box = dlib::centered_rect(
-            //     face_blur.nc() / 2,
-            //     face_blur.nr() / 2,
-            //     det.rect.width(),
-            //     det.rect.height());
-            // dlib::extract_image_chip(face_blur, final_box, face_final);
+            // face_blur.set_size(face_chip.nr() / 16, face_chip.nc() / 16);
+            // dlib::resize_image(face_chip, face_blur, dlib::interpolate_nearest_neighbor());
+            // face_final.set_size(face_chip.nr(), face_chip.nc());
+            // dlib::resize_image(face_blur, face_final, dlib::interpolate_nearest_neighbor());
+
+            // extract a big area around the detector to prevent border effects when blurring
+            const auto p = sigma;
+            const auto box = dlib::centered_rect(det, det.width() * p, det.height() * p);
+            dlib::extract_image_chip(img, box, face_chip);
+            dlib::extract_image_chip(img, box, face_chip);
+            dlib::gaussian_blur(face_chip, face_blur, sigma);
+            // get the blurred face inside the blurred chip
+            const auto final_box = dlib::centered_rect(
+                face_blur.nc() / 2,
+                face_blur.nr() / 2,
+                det.width(),
+                det.height());
+            dlib::extract_image_chip(face_blur, final_box, face_final);
 
             paste(img, det, face_final);
         }
         win.clear_overlay();
         win.set_image(img);
         dlib::save_png(img, "blurred.png");
-        // win.wait_until_closed();
+        win.wait_until_closed();
         // std::cin.get();
     }
 
